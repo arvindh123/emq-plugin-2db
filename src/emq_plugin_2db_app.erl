@@ -25,21 +25,14 @@
 
 start(_StartType, _StartArgs) ->
     {ok, Sup} = emq_plugin_2db_sup:start_link(),
-    ok = emqttd_access_control:register_mod(auth, emq_auth_demo, []),
-    ok = emqttd_access_control:register_mod(acl, emq_acl_demo, []),
-    io:format("get_key env ~p~n", [application:get_key(env)]),
     Env = element(2,application:get_key(env)),
-    
     Odbc = element(2,lists:keyfind(odbc,1,Env)),
     Topics = element(2,lists:keyfind(topics,1,Env)),
     ReqkeysList = element(2,lists:keyfind(reqlist,1,Env)),
     Que1s = element(2,lists:keyfind(que1,1,Env)),
     Que2s = element(2,lists:keyfind(que2,1,Env)),
-
     emq_plugin_2db:load(Odbc,Topics,ReqkeysList,Que1s,Que2s),
     {ok, Sup}.
 
 stop(_State) ->
-    ok = emqttd_access_control:unregister_mod(auth, emq_auth_demo),
-    ok = emqttd_access_control:unregister_mod(acl, emq_acl_demo),
     emq_plugin_2db:unload().

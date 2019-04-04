@@ -28,7 +28,7 @@
 
 -export([on_message_publish/6]).
 
--export([init/0, deinit/0, connect/1, disconnect/0, write/3, try_get_val/3 ]).
+-export([init/0, deinit/0, connect/2, disconnect/1, write/4, try_get_val/3, try_get_ts/2 ]).
 
 init()->
    
@@ -49,12 +49,12 @@ deinit()->
             {ok, "Stopped odbc"}
     end.
 
-connect(Odbc) ->
-    case whereis(plugconndb1) of 
+connect(Odbc,NamePid) ->
+    case whereis(NamePid) of 
         undefined ->
             case odbc:connect("DSN="++lists:nth(1,Odbc)++";UID="++lists:nth(2,Odbc)++";PWD="++lists:nth(3,Odbc), []) of 
                 {ok, Pid}->
-                    try register(plugconndb1, Pid)
+                    try register(NamePid, Pid)
                     catch 
                         error:X -> 
                             io:fwrite(X)
@@ -69,7 +69,7 @@ connect(Odbc) ->
                         Value == 'odbc_not_started' ->
                             case emq_plugin_2db:init() of 
                                 {ok,Val} ->
-                                    emq_plugin_2db:connect(Odbc)
+                                    emq_plugin_2db:connect(Odbc,NamePid)
                             end;
                         true->
                             io:fwrite("~p ~n", [Value]),
@@ -82,35 +82,46 @@ connect(Odbc) ->
             {ok, Pid}
     end. 
     
-disconnect() ->
-    case whereis(plugconndb1) of 
+disconnect(NamePid) ->
+    case whereis(NamePid) of 
         undefined ->
-            {ok, {"there no ODBC plugconndb1"}};
+            {ok, {"there no ODBC "}};
         Pid ->
             odbc:disconnect(Pid),
             {ok, {"disconnected -", Pid}}
     end.
 
-write(Odbc,Que1,Que2) ->
+write(Odbc,NamePid,Que1,Que2) ->
    
-    case whereis(plugconndb1) of 
+    case whereis(NamePid) of 
         undefined ->
-            case emq_plugin_2db:connect(Odbc) of 
+            case emq_plugin_2db:connect(Odbc,NamePid) of 
                 {ok,Reason} ->
-                    write(Odbc,Que1,Que2);
+                    write(Odbc,NamePid,Que1,Que2);
                 {error,Reason} ->
                     {error, Reason}
             end;
         Pid ->
             
             case odbc:param_query(Pid,Que1,Que2)  of 
-                ResultTuple ->
-                    ok;
-                    % io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
                 {error,Reason} ->
-                    io:format("odbc:param_query Error in Writing to DB: ~p~n", [Reason])
+                    io:format("odbc:param_query Error in Writing to DB: ~p~n", [Reason]);
+                ResultTuple ->
+                    ok
+                    % io:format("odbc:param_query ResultTuple: ~p~n", [ResultTuple])
+                
             end
 
+    end.
+
+try_get_ts(TimestampStr,MessageMaps) -> 
+    case maps:is_key(<<"ts">>  ,MessageMaps) of  
+        true-> 
+            binary_to_list(maps:get(<<"ts">> ,MessageMaps)); 
+        false-> 
+            TimestampStr; 
+        undefined -> 
+            TimestampStr   
     end.
 
 try_get_val(Key,MessageMaps,Dt) -> 
@@ -162,6 +173,8 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
                             Timestamp3 = lists:flatten(io_lib:format("~p", [element(3, element(13, Message))])),
                             UsernameBin = element(2, element(4, Message)),
                             ClientBin = element(1,element(4, Message)),
+                            ClientBinRe = re:replace(ClientBin, "\\s+", "", [global,{return,binary}]),
+                            NamePid = binary_to_atom(<<"pid_",  ClientBinRe/binary>>, unicode),
                             ClientStr = binary_to_list(ClientBin),
                             UsernameStr = binary_to_list(UsernameBin),
                             
@@ -181,7 +194,7 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
                             % io:format("Que1.....~p~n ", [Que1]),
                             % io:format("Que2.....~p~n ", [Que2]),
 
-                            write(Odbc,Que1,Que2),
+                            write(Odbc,NamePid,Que1,Que2),
                             {ok, Message};
                         false->
                             {error, "no required Key in JSON"}
