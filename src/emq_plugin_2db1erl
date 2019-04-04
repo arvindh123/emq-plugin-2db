@@ -1,0 +1,207 @@
+%%--------------------------------------------------------------------
+%% Copyright (c) 2013-2018 EMQ Enterprise, Inc. (http://emqtt.io)
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%--------------------------------------------------------------------
+
+-module(emq_plugin_2db).
+
+-include_lib("emqttd/include/emqttd.hrl").
+
+ 
+-import(string,[len/1]). 
+
+-export([load/2, unload/0]).
+
+%% Hooks functions
+
+
+-export([on_message_publish/2]).
+
+-export([init/0, deinit/0, connect/0, disconnect/0, write/2, try_get_val/3 ]).
+
+init()->
+   
+	case odbc:start()  of 
+        ok ->
+            io:fwrite("Started ODBC ~n"),
+            {ok, "Started odbc"};
+            
+        {error,{already_started,odbc}} ->
+            io:fwrite("Already Connceted ~n"),
+            {error, "already started odbc"}
+    end.
+
+deinit()->
+    case odbc:stop() of 
+        ok ->
+            io:fwrite("Stoped ODBC ~n"),
+            {ok, "Stopped odbc"}
+    end.
+
+connect() ->
+    case whereis(plugconndb1) of 
+        undefined ->
+            case odbc:connect("DSN=SGMainSQL;UID=CRMS;PWD=dev@web31", []) of 
+                {ok, Pid}->
+                    try register(plugconndb1, Pid)
+                    catch 
+                        error:X -> 
+                            io:fwrite(X)
+                             
+                            
+                    end,
+                    io:fwrite("Connected successfully ~n"),
+                    {ok,{"Connected Pid- ", Pid}};
+                {error, Value} ->
+                    io:fwrite("~p ~n", [Value]),
+                    if 
+                        Value == 'odbc_not_started' ->
+                            case emq_plugin_2db:init() of 
+                                {ok,Val} ->
+                                    emq_plugin_2db:connect()
+                            end;
+                        true->
+                            io:fwrite("~p ~n", [Value]),
+                            {error,Value}
+                    end
+                    
+            end;
+        Pid ->
+            io:fwrite("Already Connected with PID - ~p~n",[Pid]),
+            {ok, Pid}
+    end. 
+    
+disconnect() ->
+    case whereis(plugconndb1) of 
+        undefined ->
+            {ok, {"there no ODBC plugconndb1"}};
+        Pid ->
+            odbc:disconnect(Pid),
+            {ok, {"disconnected -", Pid}}
+    end.
+
+write(Que1,Que2) ->
+   
+    case whereis(plugconndb1) of 
+        undefined ->
+            case emq_plugin_2db:connect() of 
+                {ok,Reason} ->
+                    write(Que1,Que2);
+                {error,Reason} ->
+                    {error, Reason}
+            end;
+        Pid ->
+            
+            case odbc:param_query(Pid,Que1,Que2)  of 
+                ResultTuple ->
+                    io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
+                {error,Reason} ->
+                    io:format("odbc:param_query Error in Writing to DB: ~p~n", [Reason])
+            end
+
+    end.
+
+try_get_val(Key,MessageMaps,Dt) -> 
+    case maps:is_key(Key ,MessageMaps) of  
+        true-> 
+            maps:get(Key,MessageMaps); 
+        false-> 
+            if 
+                Dt == "int" -> 0; 
+                Dt == "string" -> ""; 
+                true -> "" 
+            end; 
+        undefined -> 
+            if
+                Dt == "int" -> 0; 
+                Dt == "string" -> ""; 
+                true -> "" 
+            end    
+    end.
+
+%% Called when the plugin application start
+load(EnvMap) ->
+    emqttd:hook('message.publish', fun ?MODULE:on_message_publish/2, [EnvMap]).
+
+
+
+on_message_publish(Message = #mqtt_message{topic = <<"$SYS/", _/binary>>}, _EnvMap) ->
+    {ok, Message};
+
+on_message_publish(Message, EnvMap) ->
+    io:format("EnvMap in Publish ~p~n", [EnvMap]),
+    io:format("publish ~s~n", [emqttd_message:format(Message)]),
+    % io:format("Raw.... Msg.....~p~n ", [Message]),
+    
+    TopicBin = element(5, Message),
+    
+    ReqTopicsBinList = [<<"sgcd/solvent-live">>],
+    case lists:member(TopicBin, maps:get(topics, EnvMap))  of 
+        true ->
+            TopicStr = binary_to_list(TopicBin),
+            MessageBin = element(12, Message),
+            ReqkeysList = [<<"ppm">>,<<"temp">>,<<"suid">>],
+            case jsx:is_json(MessageBin)  of  
+                true -> 
+                    MessageMaps = jsx:decode(MessageBin, [return_maps]),
+                    case lists:any(fun (Elem) -> lists:member(Elem, ReqkeysList) end, maps:keys(MessageMaps) ) of 
+                        true->
+                            Timestamp1 = lists:flatten(io_lib:format("~p", [element(1, element(13, Message))])),
+                            Timestamp2 = lists:flatten(io_lib:format("~p", [element(2, element(13, Message))])),
+                            Timestamp3 = lists:flatten(io_lib:format("~p", [element(3, element(13, Message))])),
+                            UsernameBin = element(2, element(4, Message)),
+                            ClientBin = element(1,element(4, Message)),
+                            ClientStr = binary_to_list(ClientBin),
+                            UsernameStr = binary_to_list(UsernameBin),
+                            
+                            
+                        
+                            Timetemp = string:concat(Timestamp1,Timestamp2),
+                            TimestampStr = string:concat(Timetemp,Timestamp3),
+
+                            
+                            Que1 = maps:get(que1, EnvMap),
+                            Que2 =   [  {{sql_varchar, 80}, [TimestampStr]},
+                                        {sql_integer , [emq_plugin_2db:try_get_val(<<"suid">>, MessageMaps,"int")]},
+                                        {sql_integer , [emq_plugin_2db:try_get_val(<<"ppm">>, MessageMaps,"int")]},
+                                        {sql_integer , [emq_plugin_2db:try_get_val(<<"temp">>, MessageMaps,"int")]}
+                                    ],
+    
+                            io:format("Que1.....~p~n ", [Que1]),
+                            io:format("Que2.....~p~n ", [Que2]),
+
+                            write(Que1,Que2),
+                            {ok, Message};
+                        false->
+                            {error, "no required Key in JSON"}
+                    end;
+                false ->
+                    {error, "not json string"};
+
+                undefined ->
+                    {error, "dont'know, undefined"}
+            end;
+        false->
+            {error ,"Topic Not mactched"};
+        undefined -> 
+            {error ,"Topic undefined"}
+    end.
+
+
+
+
+%% Called when the plugin application stop
+unload() ->
+    emqttd:unhook('message.publish', fun ?MODULE:on_message_publish/2).
+
