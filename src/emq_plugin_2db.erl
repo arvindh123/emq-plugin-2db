@@ -104,8 +104,8 @@ write(Odbc,Que1,Que2) ->
         Pid ->
             
             case odbc:param_query(Pid,Que1,Que2)  of 
-                % ResultTuple ->
-                %     io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
+                ResultTuple ->
+                    io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
                 {error,Reason} ->
                     io:format("odbc:param_query Error in Writing to DB: ~p~n", [Reason])
             end
