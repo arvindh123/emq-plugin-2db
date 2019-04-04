@@ -1,4 +1,4 @@
 emq-plugin-2db
 ===================
 
-This Plugin Helps to write to  EMQ Published data to DB with ODBC
+This Plugin helps us to store the Published data directly to DB without client subscription 
