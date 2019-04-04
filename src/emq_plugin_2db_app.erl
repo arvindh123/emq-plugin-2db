@@ -36,13 +36,6 @@ start(_StartType, _StartArgs) ->
     Que1s = element(2,lists:keyfind(que1,1,Env)),
     Que2s = element(2,lists:keyfind(que2,1,Env)),
 
-    io:format("Odbc  ~p~n", [Odbc]),
-    io:format("Topics  ~p~n", [Topics]),
-    io:format("ReqkeysList env ~p~n", [ReqkeysList]),
-    io:format("Que1s env ~p~n", [Que1s]),
-    io:format("Que2s env ~p~n", [Que2s]),
-
-    % EnvMap =  maps:from_list(Env),
     emq_plugin_2db:load(Odbc,Topics,ReqkeysList,Que1s,Que2s),
     {ok, Sup}.
 

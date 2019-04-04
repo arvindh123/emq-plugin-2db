@@ -104,8 +104,8 @@ write(Odbc,Que1,Que2) ->
         Pid ->
             
             case odbc:param_query(Pid,Que1,Que2)  of 
-                ResultTuple ->
-                    io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
+                % ResultTuple ->
+                %     io:format("odbc:param_query Result of Writing to DB: ~p~n", [ResultTuple]);
                 {error,Reason} ->
                     io:format("odbc:param_query Error in Writing to DB: ~p~n", [Reason])
             end
@@ -140,7 +140,7 @@ on_message_publish(Message = #mqtt_message{topic = <<"$SYS/", _/binary>>}, _Odbc
     {ok, Message};
 
 on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
-    io:format("publish ~s~n", [emqttd_message:format(Message)]),
+    % io:format("publish ~s~n", [emqttd_message:format(Message)]),
     
     TopicBin = element(5, Message),
     
@@ -177,8 +177,8 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
                             {ok, Parsed} = erl_parse:parse_exprs(Tokens), 
                             Bindings = [{'TimestampStr', TimestampStr}, {'MessageMaps', MessageMaps}],    
                             {value, Que2, _} = erl_eval:exprs(Parsed, Bindings), 
-                            io:format("Que1.....~p~n ", [Que1]),
-                            io:format("Que2.....~p~n ", [Que2]),
+                            % io:format("Que1.....~p~n ", [Que1]),
+                            % io:format("Que2.....~p~n ", [Que2]),
 
                             write(Odbc,Que1,Que2),
                             {ok, Message};
