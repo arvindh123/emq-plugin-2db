@@ -114,13 +114,28 @@ write(Odbc,NamePid,Que1,Que2) ->
 
     end.
 
-try_get_ts(TimestampStr,MessageMaps) -> 
+try_get_ts(Message,MessageMaps) -> 
     case maps:is_key(<<"ts">>  ,MessageMaps) of  
         true-> 
-            binary_to_list(maps:get(<<"ts">> ,MessageMaps)); 
+            TimeBin = maps:get(<<"ts">> ,MessageMaps),
+            case  is_binary(TimeBin) of 
+                true -> binary_to_list(TimeBin);
+                false -> lists:flatten(io_lib:format("~p", [TimeBin]));
+                undefined ->lists:flatten(io_lib:format("~p", [TimeBin]))
+            end;     
         false-> 
-            TimestampStr; 
+            Timestamp1 = lists:flatten(io_lib:format("~p", [element(1, element(13, Message))])),
+            Timestamp2 = lists:flatten(io_lib:format("~p", [element(2, element(13, Message))])),
+            Timestamp3 = lists:flatten(io_lib:format("~p", [element(3, element(13, Message))])),
+            Timetemp = string:concat(Timestamp1,Timestamp2),
+            TimestampStr = string:concat(Timetemp,Timestamp3),
+            TimestampStr;
         undefined -> 
+            Timestamp1 = lists:flatten(io_lib:format("~p", [element(1, element(13, Message))])),
+            Timestamp2 = lists:flatten(io_lib:format("~p", [element(2, element(13, Message))])),
+            Timestamp3 = lists:flatten(io_lib:format("~p", [element(3, element(13, Message))])),
+            Timetemp = string:concat(Timestamp1,Timestamp2),
+            TimestampStr = string:concat(Timetemp,Timestamp3),
             TimestampStr   
     end.
 
@@ -168,9 +183,7 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
                     MessageMaps = jsx:decode(MessageBin, [return_maps]),
                     case lists:any(fun (Elem) -> lists:member(Elem, lists:nth(Index,ReqkeysList)) end, maps:keys(MessageMaps) ) of 
                         true->
-                            Timestamp1 = lists:flatten(io_lib:format("~p", [element(1, element(13, Message))])),
-                            Timestamp2 = lists:flatten(io_lib:format("~p", [element(2, element(13, Message))])),
-                            Timestamp3 = lists:flatten(io_lib:format("~p", [element(3, element(13, Message))])),
+                           
                             UsernameBin = element(2, element(4, Message)),
                             ClientBin = element(1,element(4, Message)),
                             ClientBinRe = re:replace(ClientBin, "\\s+", "", [global,{return,binary}]),
@@ -180,8 +193,7 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
                             
                             
                         
-                            Timetemp = string:concat(Timestamp1,Timestamp2),
-                            TimestampStr = string:concat(Timetemp,Timestamp3),
+                            
 
                             
                             Que1 = lists:nth(Index,Que1s),
@@ -189,7 +201,7 @@ on_message_publish(Message, Odbc, Topics,ReqkeysList,Que1s,Que2s) ->
 
                             {ok, Tokens, _} = erl_scan:string(TQue2),  
                             {ok, Parsed} = erl_parse:parse_exprs(Tokens), 
-                            Bindings = [{'TimestampStr', TimestampStr}, {'MessageMaps', MessageMaps}],    
+                            Bindings = [{'Message', Message}, {'MessageMaps', MessageMaps}],    
                             {value, Que2, _} = erl_eval:exprs(Parsed, Bindings), 
                             % io:format("Que1.....~p~n ", [Que1]),
                             % io:format("Que2.....~p~n ", [Que2]),
